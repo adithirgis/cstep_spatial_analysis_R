@@ -1,0 +1,155 @@
+---
+title: "Introduction to spatial data analysis in R"
+subtitle: "R-Ladies Bangalore"
+author: "Adithi Upadhya"
+date: "July 2022"
+output:
+  html_document:
+    code_folding: hide
+---
+
+### Load libraries  
+
+
+```{r, message = FALSE, warning = FALSE}
+library(sf)
+library(raster)
+library(tidyverse)
+library(leaflet)
+library(ggplot2)
+library(ggspatial)
+```
+
+
+### st_as_sf
+
+Convert foreign object to an `sf` object.
+
+
+```{r, message = FALSE, warning = FALSE}
+data <- read.csv("data/spotted.csv", sep = ",")
+prj4string <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+my_projection <- st_crs(prj4string)
+class(data)
+
+# Create sf object
+data_sf <- st_as_sf(data, coords = c("Longitude", "Latitude"), crs = my_projection)
+class(data_sf)
+plot(data_sf)
+```
+
+
+### Map
+
+
+```{r message = FALSE, warning = FALSE}
+ggplot() + 
+  geom_sf(data = data_sf) + 
+  coord_sf()
+```
+
+
+### st_transform
+
+Transform or convert coordinates of simple feature.
+
+```{r, message = FALSE, warning = FALSE}
+data_sf_projected <- st_transform(data_sf, 32643)
+data_sf_projected
+```
+
+
+### st_buffer
+
+Computes a buffer around this geometry/each geometry.
+
+```{r, message = FALSE, warning = FALSE}
+buf <- st_buffer(data_sf_projected, dist = 3000)
+plot(buf)
+```
+
+
+### st_intersects
+
+Returns `TRUE` or `FALSE.`
+
+```{r, message = FALSE, warning = FALSE}
+st_intersects(data_sf_projected[1, ], data_sf_projected[2, ])
+st_intersects(data_sf_projected[1, ], data_sf_projected[1, ])
+```
+
+
+### st_join
+
+```{r message = FALSE, warning = FALSE}
+data_join <- read.csv("data/spotted_join.csv", sep = ",")
+# Create sf object
+data_join_sf <- st_as_sf(data_join, coords = c("Longitude", "Latitude"), crs = my_projection)
+
+# Join using predicate 
+joined <- st_join(data_sf, data_join_sf, join = st_equals)
+joined
+```
+
+
+
+### Raster 
+
+
+```{r, message = FALSE, warning = FALSE}
+temp <- raster("data/Ban_Temp_Mar2022.tif")
+temp
+```
+
+
+### projectRaster
+
+To transform a `RasterLayer` to another coordinate reference system (projection)
+
+```{r, message = FALSE, warning = FALSE}
+# To transform 
+temp_proj <- projectRaster(temp, crs = "+proj=utm +zone=43 +datum=WGS84")
+```
+
+
+### Mask by buffer 
+
+Mask values from a `Raster` object at the locations of spatial vector data
+
+```{r, message = FALSE, warning = FALSE}
+data_sf_subset <- data_sf[1, ]
+
+data_sf_buffer <- st_buffer(data_sf_subset, dist = 12000) 
+masked_raster <- mask(x = temp, mask = data_sf_buffer)
+```
+
+
+### Static Map
+
+```{r, message = FALSE, warning = FALSE}
+bangalore_boundary <- st_read("data/BBMP_Boundary.shp")
+bangalore_boundary <- st_transform(bangalore_boundary, crs = my_projection)
+
+ggplot() + geom_sf(data = bangalore_boundary, color = "green", size = 2, alpha = 0.1, fill = "green") +
+  geom_sf(data = data_sf, color = "blue", size = 2) + theme_bw() +
+  annotation_scale(location = "bl", width_hint = 0.5) +
+  annotation_north_arrow(location = "bl", which_north = "true", 
+                         pad_x = unit(0.75, "in"), pad_y = unit(0.5, "in"),
+                         style = north_arrow_fancy_orienteering) +
+  coord_sf(xlim = c(77.4, 77.8), ylim = c(12.8, 13.2))
+```
+
+# Interactive Map
+
+```{r, message = FALSE, warning = FALSE}
+leaflet(bangalore_boundary) %>% 
+  addTiles() %>% 
+  addPolygons(color = "green") %>%
+      addCircles(
+        data = data,
+        lng = ~ Longitude,
+        lat = ~ Latitude,
+        radius = 20,
+        weight = 20,
+        fill = TRUE)
+```
